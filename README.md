@@ -23,7 +23,7 @@ RN Monitor aims to provide a fast first diagnosis without requiring developers t
 
 ## Current Features
 
-### Phase 1 â€” Network Monitoring
+### Phase 1 - Network Monitoring
 
 RN Monitor globally wraps `fetch()` and tracks:
 
@@ -42,7 +42,7 @@ Example log:
 
 ---
 
-### Phase 2 â€” JavaScript Lag Detection
+### Phase 2 - JavaScript Lag Detection
 
 RN Monitor uses timer drift to approximate when the JavaScript thread is blocked.
 
@@ -60,7 +60,7 @@ Example log:
 
 ---
 
-### Phase 3 â€” Approximate FPS Monitoring
+### Phase 3 - Approximate FPS Monitoring
 
 RN Monitor uses `requestAnimationFrame()` to estimate app smoothness from the JavaScript side.
 
@@ -80,7 +80,7 @@ Example log:
 
 ---
 
-### Phase 4 â€” Floating Debug Overlay
+### Phase 4 - Floating Debug Overlay
 
 RN Monitor includes a lightweight in-app overlay:
 
@@ -151,14 +151,17 @@ emitEvent()
 
 ```txt
 App Runtime
-  â†“
+  |
+  v
 Collectors
-  â”œâ”€ NetworkCollector
-  â”œâ”€ JSLagCollector
-  â””â”€ FPSCollector
-  â†“
+  |- NetworkCollector
+  |- JSLagCollector
+  `- FPSCollector
+  |
+  v
 Event Store
-  â†“
+  |
+  v
 Overlay / Console / future dashboard
 ```
 
@@ -235,7 +238,7 @@ src/
 
 RN Monitor should answer:
 
-> â€œWhy does this app or screen feel slow?â€
+> "Why does this app or screen feel slow?"
 
 The product should be useful with minimal setup:
 
