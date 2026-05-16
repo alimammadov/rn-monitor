@@ -1,0 +1,25 @@
+{
+  "name": "rn-monitor",
+  "version": "0.1.4",
+  "description": "Lightweight React Native and Expo performance monitoring SDK for development.",
+  "main": "src/index.js",
+  "react-native": "src/index.js",
+  "module": "src/index.js",
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "react-native",
+    "expo",
+    "performance",
+    "monitoring",
+    "debugging",
+    "network-monitor"
+  ],
+  "license": "MIT",
+  "sideEffects": false,
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.72.0"
+  }
+}
