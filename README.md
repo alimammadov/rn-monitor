@@ -264,3 +264,72 @@ More detailed instrumentation should be optional, not mandatory.
 ## License
 
 MIT
+
+## Phase 5: Render Profiler
+
+Phase 5 adds React render profiling with RNMonitorProfiler.
+
+It captures:
+- profiler id
+- mount or update phase
+- actual render duration
+- base render duration
+- slow render detection
+
+Default slow render threshold:
+- 16ms
+
+Usage:
+
+    import { RNMonitorProfiler } from "rn-monitor";
+
+    <RNMonitorProfiler id="HomeScreen">
+      <HomeScreen />
+    </RNMonitorProfiler>
+
+The floating overlay now shows:
+- slow render count
+- latest slow profiler id
+- latest slow render duration
+
+React Profiler is most useful during development and profiling builds.
+
+## Phase 6: Screen Monitor
+
+Phase 6 adds screen context to RN Monitor.
+
+Use:
+
+    import { setCurrentScreen } from "rn-monitor";
+
+    setCurrentScreen("Home");
+
+After a screen is set, all future RN Monitor events automatically include:
+
+    screen: "Home"
+
+This applies to:
+- network events
+- JS lag events
+- FPS events
+- render profiler events
+
+The overlay now shows:
+- current screen
+- previous screen
+- number of transitions
+- last issue screen
+
+Example event shape:
+
+    {
+      type: "network",
+      data: {
+        screen: "ProductDetails",
+        url: "...",
+        isSlow: true
+      }
+    }
+
+This Phase 6 MVP uses manual screen tracking.
+Automatic React Navigation and Expo Router integration can be added later.

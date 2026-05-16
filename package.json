@@ -1,6 +1,6 @@
 {
   "name": "rn-monitor",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "Lightweight React Native and Expo performance monitoring SDK for development.",
   "main": "src/index.js",
   "react-native": "src/index.js",

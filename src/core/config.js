@@ -1,4 +1,4 @@
-export const monitorConfig = {
+﻿export const monitorConfig = {
   slowNetworkThresholdMs: 1000,
   enableConsoleLogs: true,
 
@@ -7,4 +7,5 @@ export const monitorConfig = {
 
   fpsSampleIntervalMs: 1000,
   lowFpsThreshold: 45,
+  slowRenderThresholdMs: 16,
 };

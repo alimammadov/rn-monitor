@@ -1,4 +1,4 @@
-export {
+﻿export {
   startNetworkMonitor,
   stopNetworkMonitor,
 } from "./collectors/networkCollector";
@@ -24,3 +24,11 @@ export {
   clearEvents,
   subscribe,
 } from "./core/eventStore";
+export { RNMonitorProfiler } from "./profilers/renderProfiler";
+
+export {
+  setCurrentScreen,
+  getCurrentScreen,
+  getScreenState,
+} from "./screen/screenMonitor";
+

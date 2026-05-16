@@ -1,77 +1,117 @@
-import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { getEvents, subscribe } from "../core/eventStore";
+import { getCurrentScreen } from "../screen/screenMonitor";
 
-const emptySummary = {
-  currentFps: null,
-  averageFps: null,
-  latestJsLagMs: null,
-  slowApiCount: 0,
-  failedApiCount: 0,
-  fpsDropCount: 0,
-  latestProblemApi: null,
-};
+function createInitialSummary() {
+  return {
+    currentScreen: getCurrentScreen(),
+    previousScreen: null,
+    screenTransitions: 0,
+    lastIssueScreen: null,
+
+    currentFps: null,
+    averageFps: null,
+    fpsDrops: 0,
+
+    latestJsLagMs: null,
+
+    slowApiCount: 0,
+    failedApiCount: 0,
+    latestProblemApi: null,
+
+    slowRenderCount: 0,
+    latestSlowRenderProfilerId: null,
+    latestSlowRenderDurationMs: null,
+  };
+}
+
+function markIssueScreen(next, data) {
+  if (data?.screen) {
+    next.lastIssueScreen = data.screen;
+  }
+}
 
 function applyEvent(summary, event) {
   const next = { ...summary };
+  const data = event?.data ?? {};
 
-  if (event.type === "fps") {
-    next.currentFps = event.data.fps;
-    next.averageFps = event.data.averageFps;
+  if (data.screen) {
+    next.currentScreen = data.screen;
+  }
 
-    if (event.data.isLow) {
-      next.fpsDropCount += 1;
+  if (event?.type === "screen") {
+    next.currentScreen = data.to ?? data.screen ?? next.currentScreen;
+    next.previousScreen = data.from ?? next.previousScreen;
+    next.screenTransitions += 1;
+  }
+
+  if (event?.type === "fps") {
+    next.currentFps = data.fps ?? next.currentFps;
+    next.averageFps = data.averageFps ?? next.averageFps;
+
+    if (data.isLow) {
+      next.fpsDrops += 1;
+      markIssueScreen(next, data);
     }
   }
 
-  if (event.type === "js_lag") {
-    next.latestJsLagMs = event.data.lagMs;
+  if (event?.type === "js_lag") {
+    next.latestJsLagMs = data.lagMs ?? next.latestJsLagMs;
+    markIssueScreen(next, data);
   }
 
-  if (event.type === "network") {
-    if (event.data.isSlow) {
+  if (event?.type === "network") {
+    if (data.isSlow) {
       next.slowApiCount += 1;
+      next.latestProblemApi = data.url ?? next.latestProblemApi;
+      markIssueScreen(next, data);
     }
 
-    if (event.data.isError) {
+    if (data.isError) {
       next.failedApiCount += 1;
+      next.latestProblemApi = data.url ?? next.latestProblemApi;
+      markIssueScreen(next, data);
     }
+  }
 
-    if (event.data.isSlow || event.data.isError) {
-      next.latestProblemApi = {
-        method: event.data.method,
-        url: event.data.url,
-        duration: event.data.duration,
-        status: event.data.status,
-        isSlow: event.data.isSlow,
-        isError: event.data.isError,
-      };
-    }
+  if (event?.type === "render" && data.isSlow) {
+    next.slowRenderCount += 1;
+    next.latestSlowRenderProfilerId =
+      data.profilerId ?? next.latestSlowRenderProfilerId;
+    next.latestSlowRenderDurationMs =
+      data.actualDurationMs ?? next.latestSlowRenderDurationMs;
+    markIssueScreen(next, data);
   }
 
   return next;
 }
 
-function buildSummaryFromHistory(events) {
-  return events.reduce((summary, event) => {
-    return applyEvent(summary, event);
-  }, emptySummary);
+function buildSummaryFromEvents(events) {
+  return events.reduce(
+    (summary, event) => applyEvent(summary, event),
+    createInitialSummary()
+  );
 }
 
-function formatApiLabel(api) {
-  if (!api) {
-    return "None";
+function formatMetric(value, suffix = "") {
+  if (value === null || value === undefined || value === "") {
+    return "--";
   }
 
-  const kind = api.isError ? "ERROR" : "SLOW";
-  return `${kind} ${api.method} ${api.duration}ms`;
+  return `${value}${suffix}`;
 }
 
 export function RNMonitorOverlay() {
   const [isOpen, setIsOpen] = useState(false);
-  const [summary, setSummary] = useState(() => {
-    return buildSummaryFromHistory(getEvents());
-  });
+  const [summary, setSummary] = useState(() =>
+    buildSummaryFromEvents(getEvents())
+  );
 
   useEffect(() => {
     const unsubscribe = subscribe((event) => {
@@ -81,212 +121,138 @@ export function RNMonitorOverlay() {
     return unsubscribe;
   }, []);
 
-  if (!isOpen) {
-    return (
-      <View style={styles.collapsedRoot} pointerEvents="box-none">
-        <Pressable style={styles.floatingButton} onPress={() => setIsOpen(true)}>
-          <Text style={styles.floatingButtonTitle}>RN</Text>
-          <Text style={styles.floatingButtonMeta}>
-            {summary.currentFps ?? "--"} FPS
-          </Text>
-        </Pressable>
-      </View>
-    );
-  }
+  const latestApiLabel = useMemo(() => {
+    if (!summary.latestProblemApi) {
+      return "--";
+    }
+
+    return summary.latestProblemApi.length > 34
+      ? `${summary.latestProblemApi.slice(0, 34)}...`
+      : summary.latestProblemApi;
+  }, [summary.latestProblemApi]);
 
   return (
-    <View style={styles.expandedRoot} pointerEvents="box-none">
-      <View style={styles.panel}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>RN Monitor</Text>
-            <Text style={styles.subtitle}>Live app health</Text>
-          </View>
+    <View pointerEvents="box-none" style={styles.root}>
+      {isOpen && (
+        <View style={styles.panel}>
+          <Text style={styles.title}>RN Monitor</Text>
 
-          <Pressable style={styles.closeButton} onPress={() => setIsOpen(false)}>
-            <Text style={styles.closeText}>Ã—</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.metricGrid}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>FPS</Text>
-            <Text style={styles.metricValue}>{summary.currentFps ?? "--"}</Text>
-          </View>
-
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Avg FPS</Text>
-            <Text style={styles.metricValue}>{summary.averageFps ?? "--"}</Text>
-          </View>
-
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>JS Lag</Text>
-            <Text style={styles.metricValue}>
-              {summary.latestJsLagMs !== null ? `${summary.latestJsLagMs}ms` : "--"}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Screen Context</Text>
+            <Text style={styles.metric}>
+              Current Screen: {formatMetric(summary.currentScreen)}
+            </Text>
+            <Text style={styles.metric}>
+              Previous Screen: {formatMetric(summary.previousScreen)}
+            </Text>
+            <Text style={styles.metric}>
+              Transitions: {formatMetric(summary.screenTransitions)}
+            </Text>
+            <Text style={styles.metric}>
+              Last Issue Screen: {formatMetric(summary.lastIssueScreen)}
             </Text>
           </View>
 
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>FPS Drops</Text>
-            <Text style={styles.metricValue}>{summary.fpsDropCount}</Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Performance</Text>
+            <Text style={styles.metric}>
+              FPS: {formatMetric(summary.currentFps)}
+            </Text>
+            <Text style={styles.metric}>
+              Avg FPS: {formatMetric(summary.averageFps)}
+            </Text>
+            <Text style={styles.metric}>
+              FPS Drops: {formatMetric(summary.fpsDrops)}
+            </Text>
+            <Text style={styles.metric}>
+              Latest JS Lag: {formatMetric(summary.latestJsLagMs, "ms")}
+            </Text>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Network</Text>
+            <Text style={styles.metric}>
+              Slow APIs: {formatMetric(summary.slowApiCount)}
+            </Text>
+            <Text style={styles.metric}>
+              Failed APIs: {formatMetric(summary.failedApiCount)}
+            </Text>
+            <Text style={styles.metric}>
+              Last Problem API: {latestApiLabel}
+            </Text>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Render Profiler</Text>
+            <Text style={styles.metric}>
+              Slow Renders: {formatMetric(summary.slowRenderCount)}
+            </Text>
+            <Text style={styles.metric}>
+              Latest Profiler: {formatMetric(summary.latestSlowRenderProfilerId)}
+            </Text>
+            <Text style={styles.metric}>
+              Latest Duration: {formatMetric(summary.latestSlowRenderDurationMs, "ms")}
+            </Text>
           </View>
         </View>
+      )}
 
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>Slow APIs</Text>
-          <Text style={styles.rowValue}>{summary.slowApiCount}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>Failed APIs</Text>
-          <Text style={styles.rowValue}>{summary.failedApiCount}</Text>
-        </View>
-
-        <View style={styles.apiBox}>
-          <Text style={styles.apiLabel}>Last slow/error API</Text>
-          <Text style={styles.apiValue}>
-            {formatApiLabel(summary.latestProblemApi)}
-          </Text>
-          {summary.latestProblemApi && (
-            <Text style={styles.apiUrl} numberOfLines={2}>
-              {summary.latestProblemApi.url}
-            </Text>
-          )}
-        </View>
-      </View>
+      <Pressable
+        onPress={() => setIsOpen((current) => !current)}
+        style={styles.fab}
+      >
+        <Text style={styles.fabText}>{isOpen ? "×" : "RN"}</Text>
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  collapsedRoot: {
+  root: {
     position: "absolute",
     right: 16,
-    bottom: 28,
+    bottom: 24,
+    alignItems: "flex-end",
     zIndex: 9999,
-    elevation: 20,
   },
-  expandedRoot: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 28,
-    zIndex: 9999,
-    elevation: 20,
-  },
-  floatingButton: {
-    minWidth: 82,
-    borderRadius: 999,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: "#121212",
-    alignItems: "center",
-  },
-  floatingButtonTitle: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  floatingButtonMeta: {
-    color: "#d6d6d6",
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  panel: {
-    borderRadius: 18,
-    padding: 16,
-    backgroundColor: "#121212",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  title: {
-    color: "#ffffff",
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  subtitle: {
-    color: "#bdbdbd",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#252525",
+  fab: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#111827",
+    marginTop: 12,
   },
-  closeText: {
-    color: "#ffffff",
-    fontSize: 24,
-    lineHeight: 26,
+  fabText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
   },
-  metricGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 14,
+  panel: {
+    width: 305,
+    borderRadius: 18,
+    padding: 16,
+    backgroundColor: "#111827",
   },
-  metricCard: {
-    width: "47%",
-    borderRadius: 12,
-    backgroundColor: "#1f1f1f",
-    padding: 12,
+  title: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
   },
-  metricLabel: {
-    color: "#a8a8a8",
+  section: {
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    color: "#93C5FD",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  metric: {
+    color: "#E5E7EB",
     fontSize: 12,
-    fontWeight: "600",
-  },
-  metricValue: {
-    color: "#ffffff",
-    fontSize: 20,
-    fontWeight: "800",
-    marginTop: 4,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: "#252525",
-  },
-  rowLabel: {
-    color: "#d2d2d2",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  rowValue: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  apiBox: {
-    marginTop: 10,
-    borderRadius: 12,
-    backgroundColor: "#1f1f1f",
-    padding: 12,
-  },
-  apiLabel: {
-    color: "#a8a8a8",
-    fontSize: 12,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  apiValue: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  apiUrl: {
-    color: "#d2d2d2",
-    fontSize: 12,
-    marginTop: 5,
+    lineHeight: 18,
   },
 });
